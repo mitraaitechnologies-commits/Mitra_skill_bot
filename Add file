@@ -1,0 +1,236 @@
+import sqlite3
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, CallbackContext, MessageHandler, Filters
+
+# ===== KEEP ALIVE =====
+from flask import Flask
+from threading import Thread
+
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# ===== CONFIG =====
+TOKEN = "8737105971:AAHUxp2g4xy0DW39lCvpVnvob3hOZnGUUEQ"
+ADMIN_ID = 1346129010
+BOT_USERNAME = "@Mitra_skill_bot"
+
+# ===== DATABASE =====
+conn = sqlite3.connect("mitra.db", check_same_thread=False)
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY,
+    username TEXT,
+    approved INTEGER DEFAULT 0,
+    custom_id TEXT,
+    referrer INTEGER
+)
+""")
+conn.commit()
+
+# ===== FUNCTIONS =====
+def generate_custom_id():
+    cursor.execute("SELECT COUNT(*) FROM users WHERE approved=1")
+    count = cursor.fetchone()[0]
+    return f"MITRA{1001 + count}"
+
+def is_approved(user_id):
+    if user_id == ADMIN_ID:
+        return True
+    cursor.execute("SELECT approved FROM users WHERE user_id=?", (user_id,))
+    row = cursor.fetchone()
+    return row and row[0] == 1
+
+# ===== COMMANDS =====
+
+def start(update: Update, context: CallbackContext):
+    user = update.message.from_user
+
+    referrer = None
+    if context.args:
+        referrer = int(context.args[0])
+
+    cursor.execute("INSERT OR IGNORE INTO users (user_id, username, referrer) VALUES (?, ?, ?)",
+                   (user.id, user.username, referrer))
+    conn.commit()
+
+    context.bot.send_message(ADMIN_ID, f"New User Joined\nID: {user.id}")
+
+    msg = """🔥 Welcome to the Mitra Skills 🔥
+
+Yaha tum sirf seekhne nahi…
+🔥 SKILL build karoge
+🔥 SELF GROWTH karoge
+🔥 Apni LIFE change karoge
+
+👇 Start karo:
+/join
+"""
+    update.message.reply_text(msg)
+
+# 🔥 UPDATED JOIN (POWERFUL PRODUCT MSG)
+def join(update: Update, context: CallbackContext):
+    msg = """🔥 *WELCOME TO NEW OPPORTUNITIES* 🔥
+
+"Six Pillar of Power" - India ki sabse khatarnaak ebook aa gayi.
+
+Youngest Founder ne khud likhi hai 💯
+
+📘 Andar kya hai?
+Mindset hack + Paisa hack + Future hack = 60 chapter
+
+🔥 Sirf book nahi…
+Yaha tum:
+✅ Strong learning karoge  
+✅ Real earning karoge  
+✅ Apni growth next level pe le jaoge  
+
+Yeh platform bana hai un logon ke liye:
+❌ Jo average life nahi jeena chahte  
+✅ Jo khud ka empire banana chahte hai  
+
+🚫 Bahana khatam. Action shuru.
+
+💰 Price:- ₹199 only  
+☕ 2 chai kam piyo, zindagi bana lo  
+
+👉 Abhi /buy click karo  
+
+⚠️ Yaad rakhna:  
+Gareeb paida hona galti nahi...  
+Gareeb marna choice hai 🔥
+"""
+    update.message.reply_text(msg, parse_mode='Markdown')
+
+def buy(update: Update, context: CallbackContext):
+    user = update.message.from_user
+
+    context.bot.send_message(ADMIN_ID, f"User BUY request\nID: {user.id}")
+
+    msg = """🔥 FINAL OFFER 🔥
+
+Price: ₹199
+
+UPI: tajubadi1005@slc
+
+Step:
+1. Payment karo  
+2. Screenshot lo  
+3. Form fill karo  
+
+Form:
+https://forms.gle/8VHZq8o6fGDdH1fu8
+
+Admin:
+t.me/Mitra_bot_admin
+"""
+    update.message.reply_text(msg)
+
+# ===== APPROVE =====
+def approve(update: Update, context: CallbackContext):
+    if update.message.from_user.id != ADMIN_ID:
+        return
+
+    try:
+        user_id = int(context.args[0])
+    except:
+        update.message.reply_text("Use: /approve USER_ID")
+        return
+
+    custom_id = generate_custom_id()
+
+    cursor.execute("UPDATE users SET approved=1, custom_id=? WHERE user_id=?",
+                   (custom_id, user_id))
+    conn.commit()
+
+    keyboard = [
+        ["💰 Direct income", "📊 Level income"],
+        ["🔗 Refferal Link", "👥 Team Count"],
+        ["🧠 Quiz Compition", "💸 Withdrawal request"],
+        ["🛠 Task Karo", "🏆 Rank System"],
+        ["📞 Help support"]
+    ]
+
+    context.bot.send_message(
+        chat_id=user_id,
+        text=f"✅ Approved!\nYour ID: {custom_id}\n\nDashboard 👇",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
+
+# ===== BUTTON HANDLER =====
+def handle(update: Update, context: CallbackContext):
+    text = update.message.text
+    user_id = update.message.from_user.id
+
+    if not is_approved(user_id):
+        update.message.reply_text("❌ Pehle /buy karo")
+        return
+
+    if text == "💰 Direct income":
+        update.message.reply_text("Seller (You) :- 30%")
+
+    elif text == "📊 Level income":
+        update.message.reply_text("""Level 1 :- 12.5%
+Level 2 :- 10%
+Level 3 :- 5%""")
+
+    elif text == "🔗 Refferal Link":
+        link = f"https://t.me/@Mitra_skill_bot?start={user_id}"
+        update.message.reply_text(link)
+
+    elif text == "👥 Team Count":
+        cursor.execute("SELECT COUNT(*) FROM users WHERE referrer=?", (user_id,))
+        count = cursor.fetchone()[0]
+        update.message.reply_text(f"Team Members: {count}")
+
+    elif text == "🧠 Quiz Compition":
+        update.message.reply_photo(
+            photo="https://drive.google.com/file/d/1G8L3OGvPVr2kf9bJjY5kNhDqHEdl66yM/view?usp=drivesdk",
+            caption="🧠 Daily Quiz 8PM\nJoin Now 🚀"
+        )
+
+    elif text == "💸 Withdrawal request":
+        update.message.reply_text("https://forms.gle/7zAWj5wv8KSKanC46")
+
+    elif text == "🛠 Task Karo":
+        update.message.reply_text("https://t.me/+aD9uDDr8RDs5OWVl")
+
+    elif text == "🏆 Rank System":
+        update.message.reply_photo(
+            photo="https://drive.google.com/file/d/1jmEdagkVSHXkXFcR8q8nLEvO_n5qJ6JE/view?usp=drivesdk",
+            caption="🏆 Rank System Grow Fast 🔥"
+        )
+
+    elif text == "📞 Help support":
+        update.message.reply_text("t.me/Mitra_bot_admin")
+
+# ===== MAIN =====
+def main():
+    keep_alive()
+
+    updater = Updater(TOKEN)
+    dp = updater.dispatcher
+
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("join", join))
+    dp.add_handler(CommandHandler("buy", buy))
+    dp.add_handler(CommandHandler("approve", approve))
+
+    dp.add_handler(MessageHandler(Filters.text, handle))
+
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == "__main__":
+    main()
